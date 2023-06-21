@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+die() {
+	>&2 echo "FATAL: ${@:-UNKNOWN ERROR}"
+	exit 1
+}
+
+words() {
+	[ -f "/usr/share/dict/words" ] || die "No dictionary available from which to generate stack-name."
+	cat /usr/share/dict/linux.words | grep -Ev '[A-Z-]'	| awk 'length($0)<=10{print}'
+}
+
+rand() {
+	echo "ibase=16; $(dd if=/dev/random bs=16 count=1 iflag=fullblock 2>/dev/null | xxd -p | tr a-f A-F)" | bc
+}
+
+get-stack-name() {
+	local len="$(words | wc -l)"
+	local left="$(echo "scale=0; $(rand)%${len}" | bc)"
+	local right="$(echo "scale=0; $(rand)%${len}" | bc)"
+
+	left="$(words | cat -n | awk '$1=="'"${left}"'"{print $2}')"
+	right="$(words | cat -n | awk '$1=="'"${right}"'"{print $2}')"
+
+	echo "${left}-${right}"
+}
+
+if [ -f ".stackname" ]; then
+	stackname="$(cat .stackname)"
+	stack="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackName=="'"${stackname}"'" and .StackStatus!="DELETE_COMPLETE")')"
+	if [ -n "${stack}" ]; then
+		stat="$(echo "${stack}" | jq -r .StackStatus)"
+		>&2 echo "A .stackname file exists, and the stack \"${stackname}\" in it is in the state \"${stat}\"." 
+		>&2 echo "Delete the stack first, or delete the .stackname file to create a new stack."
+		exit 0
+	else
+		>&2 echo "Stale .stackname file found. Deleteing."
+		rm -f .stackname
+	fi
+fi
+
+stackname="$(get-stack-name)" || die "Could not generate stack name."
+echo "Stack name: \"${stackname}\""
+
+[ -z "${DEBUG+x}" ] || { >&2 echo "\"DEBUG\" environment variable is set. Enabling debugging output."; set -x; }
+
+sid="$(aws cloudformation create-stack --stack-name "${stackname}" --template-body file://lemmy-server.yaml --parameters ParameterKey=SSHKey,ParameterValue=white-yubikey ParameterKey=StackName,ParameterValue="${stackname}" | jq -r .StackId)" || die "Stack could not be created."
+
+echo "Stack ID is \"${sid}\""
+echo "Saving stackname to .stackname file."
+echo "${stackname}" > .stackname || die "Could not save stack name."
+
+stage=""
+while true; do
+	status="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackId == "'"${sid}"'")' | jq -r .StackStatus)" || die "Could not obtain staack status for stack \"${sid}\"."
+	case "${status}" in
+		CREATE_COMPLETE)
+      echo
+			echo "Stack has deployed successfully."
+			break
+    ;;
+    CREATE_IN_PROGRESS)
+			[ "${stage}" == "creating" ] && echo -n "." || { stage=creating; echo -n "Stack is being deployed."; }
+      sleep 1
+		;;
+    ROLLBACK_IN_PROGRESS)
+      [ "${stage}" == "rollback" ] && echo -n "." || { stage=rollback; echo; echo -n "Stack failed to deploy and is being rolled-back."; }
+    ;;
+    ROLLBACK_COMPLETE)
+    	echo
+    	echo "Stack has completed rollback."
+			exit 0
+		;;
+		DELETE_IN_PROGRESS)
+			[ "${stage}" == "deleting" ] && echo -n "." || { stage=deleting; echo; echo -n "Stack delete has been initiated. Don't know from where. Deleting."; }
+    ;;
+		DELETE_COMPLETE)
+			echo
+			echo "Stack has been deleted."
+			rm -f .stackname
+			exit 0
+		;;
+		*)
+			echo "Unknown stack status: \"${status}\"."
+			exit 1;
+	esac
+done
+
+echo "IP Address is: $(aws ec2 describe-instances --query "Reservations[*].Instances[*].PublicIpAddress" --filters "Name=tag-key,Values=aws:cloudformation:stack-id" "Name=tag-value,Values=${sid}" "Name=instance-state-name,Values=running" | jq -r .[][])" || die "Could not get IP address."

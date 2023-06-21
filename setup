@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+keys=("25A33431D0C867CF69199E24B1D8325468344D5F")
+config="https://github.com/lordvadr/lemmy-server-config.git"
+branch="main"
+workdir="server-config"
+
+die() {
+	>&2 echo "FATAL: ${@:-UNKNOWN ERROR}"
+	exit 1
+}
+
+cleanup() {
+	local rv="${?}"
+	[ "${rv}" == "0" ] || { >&2 echo "FATAL FATAL FATAL FATAL !!!!!! SCRIPT DID NOT EXIT CLEANLY"; }
+}
+
+trustkey() {
+	gpg --recv-keys "${1}" && echo "${1}:6:" | gpg --import-ownertrust
+}
+
+trap cleanup EXIT
+
+cd /root || die "Could not change working directory to /root"
+
+sudo dnf -y --allowerasing install dirmngr git || die "Could not install git and other tools."
+
+for key in "${keys[@]}"; do
+	trustkey "${key}" || die "Could not import key/set trust for keyid \"${key}\"."
+done
+
+[ ! -d "${workdir}" ] && [ ! -e "${workdir}" ] || rm -rf "${workdir}" || die "Could not remove stale workdir \"${workdir}\"."
+
+git clone "${config}" "${workdir}" || die "Could not clone configuration repository."
+
+pushd "${workdir}" || die "Could not cd into working directory \"${workdir}\"."
+
+git checkout "${branch}" || die "Could not checkout \"${branch}\" branch."
+
+COMMIT=""
+
+for c in $(git log --pretty=format:"%H"); do
+	if git verify-commit "${c}"; then
+		COMMIT="${c}"
+		git checkout "${c}"
+		break
+	else
+		COMMIT=""
+	fi
+done
+
+[ -n "${COMMIT}" ] || die "No signed commit found."
+
+echo "Most recent signed commit is \"${COMMIT}\"."
+
+[ -e "setup.sh" ] || die "No \"setup.sh\" script to launch."
+
+[ -x "setup.sh" ] || die "\"setup.sh\" is not executabel."
+
+bash -n "setup.sh" || die "\"setup.sh\" does not pass linting by bash."
+
+exec ./setup.sh

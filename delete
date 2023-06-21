@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+die() {
+	>&2 echo "FATAL ${@:-UNKNOWN ERROR}"
+	exit 1
+}
+
+get_sid() {
+	aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackName=="'"${1}"'" and .StackStatus!="DELETE_COMPLETE")' | jq -r .StackId
+}
+
+[ -z "${DEBUG+x}" ] || { >&2 echo "DEBUG environment variable set. Enabling debugging output."; set -x; }
+
+list_stacks() {
+	local stacks="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackStatus!="DELETE_COMPLETE")' | jq -r '"\(.StackName) | \(.TemplateDescription)"')" || \
+		die "Could not list available cloudformation stacks."
+	[ -n "${stacks}" ] || die "No stacks available to delete."
+	>&2 echo "Please add the stack name you wish to delete as an argument to this command."
+	>&2 echo "Valid stacks:"
+  >&2 echo "========================="
+}
+
+sid=""
+sf=""
+if [ -n "${1:-}" ]; then
+	stackname="${1}"
+	sid="$(get_sid "${stackname}")"
+	[ -n "${sid}" ] || die "No stack name \"${1}\" found."
+elif [ -f .stackname ]; then
+	stackname="$(cat .stackname)"
+	sid="$(get_sid "${stackname}")"
+	if [ -z "${sid}" ]; then
+		>&2 echo "Stale .stackname file laying around. No such stack named \"${stackname}\". Deleting."
+		rm -f .stackname
+		list_stacks
+		exit 0
+	fi
+	sf=1
+else
+	>&2 echo "No .stackname file found."
+	list_stacks
+	exit 0
+fi
+
+[ -n "${sid}" ] || { >&2 echo "No stacks to delete."; exit 0; }
+
+echo "Stack ID is \"${sid}\""
+
+aws cloudformation delete-stack --stack-name="${stackname}" || die "Could not delete stack."
+
+stage=""
+while true; do
+	status="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackId == "'"${sid}"'")' | jq -r .StackStatus)" || die "Could not obtain staack status for stack \"${sid}\"."
+	case "${status}" in
+    DELETE_IN_PROGRESS)
+      [ "${stage}" == "deleting" ] && echo -n "." || { stage=deleting; echo -n "Stack is being deleted."; }
+      sleep 1
+    ;;
+    DELETE_COMPLETE)
+      echo
+      echo "Stack has been successfully deleted."
+			[ "${sf}" == "1" ] || rm -f ".stackfile."
+			exit 0
+    ;;
+		*)
+			echo "Unknown stack status: \"${status}\"."
+			exit 1;
+	esac
+done

@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Cloudformation build for /r/Futurology's Lemmy instance
+Parameters:
+  SSHKey:
+    Description: 'The EC2 Key Pair to allow SSH access to the nodes'
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  NumberOfAZs:
+    Description: 'Number of availability zones to deploy into. Valid values are 1 and 3.'
+    Default: 3
+    Type: Number
+    AllowedValues:
+      - 1
+      - 3
+  StackName:
+    Description: 'Name of the cloudformation stack'
+    Type: String
+Mappings:
+  VPCMap:
+    us-west-2:
+      vpc: vpc-2f6ff94a
+  AmiMap:
+    us-west-2:
+      #serverami: ami-04e914639d0cca79a # amazon linux
+      #serverami: ami-0672af4b5c29cece0 # rocky 9
+      serverami: ami-0dda7e535b65b6469 # rhel 9
+  AZMap:
+    us-west-2:
+      zone1: us-west-2a
+      zone2: us-west-2b
+      zone3: us-west-2c
+  SubnetMap:
+    us-west-2:
+      zone1: subnet-2f0f614a
+      zone2: subnet-8f911df8
+      zone3: subnet-5047e709
+Resources:
+  serversg:
+    Type: 'AWS::EC2::SecurityGroup' 
+    Properties: 
+      VpcId: !FindInMap [ VPCMap, !Ref 'AWS::Region', vpc ]
+      GroupDescription: Permit Any IPv4
+      GroupName: cloud-server-permit-any
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: -1
+      - CidrIpv6: ::0/0
+        IpProtocol: -1
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: -1
+      - CidrIpv6: ::0/0
+        IpProtocol: -1
+  server:
+    Type: AWS::EC2::Instance 
+    Properties:
+      ImageId: !FindInMap [ AmiMap, !Ref 'AWS::Region', serverami ]
+      InstanceType: t3.small
+      KeyName: !Ref SSHKey
+      SecurityGroupIds: [ { "Fn::GetAtt" : [ "serversg", "GroupId" ] } ]
+      Tags:
+      - Key: Name
+        Value: !Ref StackName
+      UserData: IyEvdXNyL2Jpbi9lbnYgYmFzaAoKc2V0IC1ldW8gcGlwZWZhaWwKCmtleXM9KCIyNUEzMzQzMUQwQzg2N0NGNjkxOTlFMjRCMUQ4MzI1NDY4MzQ0RDVGIikKY29uZmlnPSJodHRwczovL2dpdGh1Yi5jb20vbG9yZHZhZHIvbGVtbXktc2VydmVyLWNvbmZpZy5naXQiCmJyYW5jaD0ibWFpbiIKd29ya2Rpcj0ic2VydmVyLWNvbmZpZyIKCmRpZSgpIHsKCT4mMiBlY2hvICJGQVRBTDogJHtAOi1VTktOT1dOIEVSUk9SfSIKCWV4aXQgMQp9CgpjbGVhbnVwKCkgewoJbG9jYWwgcnY9IiR7P30iCglbICIke3J2fSIgPT0gIjAiIF0gfHwgeyA+JjIgZWNobyAiRkFUQUwgRkFUQUwgRkFUQUwgRkFUQUwgISEhISEhIFNDUklQVCBESUQgTk9UIEVYSVQgQ0xFQU5MWSI7IH0KfQoKdHJ1c3RrZXkoKSB7CglncGcgLS1yZWN2LWtleXMgIiR7MX0iICYmIGVjaG8gIiR7MX06NjoiIHwgZ3BnIC0taW1wb3J0LW93bmVydHJ1c3QKfQoKdHJhcCBjbGVhbnVwIEVYSVQKCmNkIC9yb290IHx8IGRpZSAiQ291bGQgbm90IGNoYW5nZSB3b3JraW5nIGRpcmVjdG9yeSB0byAvcm9vdCIKCnN1ZG8gZG5mIC15IC0tYWxsb3dlcmFzaW5nIGluc3RhbGwgZGlybW5nciBnaXQgfHwgZGllICJDb3VsZCBub3QgaW5zdGFsbCBnaXQgYW5kIG90aGVyIHRvb2xzLiIKCmZvciBrZXkgaW4gIiR7a2V5c1tAXX0iOyBkbwoJdHJ1c3RrZXkgIiR7a2V5fSIgfHwgZGllICJDb3VsZCBub3QgaW1wb3J0IGtleS9zZXQgdHJ1c3QgZm9yIGtleWlkIFwiJHtrZXl9XCIuIgpkb25lCgpbICEgLWQgIiR7d29ya2Rpcn0iIF0gJiYgWyAhIC1lICIke3dvcmtkaXJ9IiBdIHx8IHJtIC1yZiAiJHt3b3JrZGlyfSIgfHwgZGllICJDb3VsZCBub3QgcmVtb3ZlIHN0YWxlIHdvcmtkaXIgXCIke3dvcmtkaXJ9XCIuIgoKZ2l0IGNsb25lICIke2NvbmZpZ30iICIke3dvcmtkaXJ9IiB8fCBkaWUgIkNvdWxkIG5vdCBjbG9uZSBjb25maWd1cmF0aW9uIHJlcG9zaXRvcnkuIgoKcHVzaGQgIiR7d29ya2Rpcn0iIHx8IGRpZSAiQ291bGQgbm90IGNkIGludG8gd29ya2luZyBkaXJlY3RvcnkgXCIke3dvcmtkaXJ9XCIuIgoKZ2l0IGNoZWNrb3V0ICIke2JyYW5jaH0iIHx8IGRpZSAiQ291bGQgbm90IGNoZWNrb3V0IFwiJHticmFuY2h9XCIgYnJhbmNoLiIKCkNPTU1JVD0iIgoKZm9yIGMgaW4gJChnaXQgbG9nIC0tcHJldHR5PWZvcm1hdDoiJUgiKTsgZG8KCWlmIGdpdCB2ZXJpZnktY29tbWl0ICIke2N9IjsgdGhlbgoJCUNPTU1JVD0iJHtjfSIKCQlnaXQgY2hlY2tvdXQgIiR7Y30iCgkJYnJlYWsKCWVsc2UKCQlDT01NSVQ9IiIKCWZpCmRvbmUKClsgLW4gIiR7Q09NTUlUfSIgXSB8fCBkaWUgIk5vIHNpZ25lZCBjb21taXQgZm91bmQuIgoKZWNobyAiTW9zdCByZWNlbnQgc2lnbmVkIGNvbW1pdCBpcyBcIiR7Q09NTUlUfVwiLiIKClsgLWUgInNldHVwLnNoIiBdIHx8IGRpZSAiTm8gXCJzZXR1cC5zaFwiIHNjcmlwdCB0byBsYXVuY2guIgoKWyAteCAic2V0dXAuc2giIF0gfHwgZGllICJcInNldHVwLnNoXCIgaXMgbm90IGV4ZWN1dGFiZWwuIgoKYmFzaCAtbiAic2V0dXAuc2giIHx8IGRpZSAiXCJzZXR1cC5zaFwiIGRvZXMgbm90IHBhc3MgbGludGluZyBieSBiYXNoLiIKCmV4ZWMgLi9zZXR1cC5zaAo=

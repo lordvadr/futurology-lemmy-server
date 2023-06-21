@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+die() {
+	>&2 echo "FATAL: ${@:-UNKNOWN ERROR}"
+	exit 1
+}
+
+get_stack() {
+	aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackName=="'"${1}"'" and .StackStatus!="DELETE_COMPLETE")'
+}
+
+list_stacks() {
+	local stacks="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackStatus=="CREATE_COMPLETE" or .StackStatus=="CREATE_IN_PROGRESS")' | jq -r '"\(.StackName) | \(.TemplateDescription)"')" || \
+		die "Could not list available cloudformation stacks."
+	[ -n "${stacks}" ] || die "No stacks available to connect to."
+	>&2 echo "Please add the stack name you wish to connect to as an argument to this command."
+	>&2 echo "Valid stacks:"
+	>&2 echo "========================="
+}
+
+usage() {
+	>&2 echo "Usage:"
+	>&2 echo "	Connect to existing stack as current user:"
+	>&2 echo "		$(basename "${0}")"
+	>&2 echo "	Connect to existing stack as user ec2-user:"
+	>&2 echo "		$(basename "${0}") ec2-user"
+	>&2 echo "	Connect to existing stack named \"my-stack\" as user admin:"
+	>&2 echo "		$(basename "${0}") admin@my-stack"
+}
+
+[ -z "${DEBUG+x}" ] || { >&2 echo "DEBUG environment variable set. Enabling debugging output."; set -x; }
+
+for arg in "${@}"; do
+	[ "${arg}" == "-h" ] || [ "${arg}" == "--help" ] && { usage; exit 0; }
+done
+
+[ -z "${2:-}" ] || die "Too many arguments passed to command."
+
+if [ -n "${1:-}" ]; then
+	user="$(echo "${1}" | cut -d@ -f 1)"
+	stackname="$(echo "${1}" | cut -d@ -f 2)"
+fi
+
+[ -n "${user:-}" ] || user="${USER}"
+
+if [ -n "${stackname:-}" ]; then
+	stack="$(get_stack "${stackname}")"
+	[ -n "${stack}" ] || { >&2 echo "No stackname \"${stackname}\" available."; list_stacks; exit 0; }
+elif [ -f ".stackname" ]; then
+	stackname="$(cat .stackname)"
+	stack="$(get_stack "${stackname}")"
+	if [ ! -n "${stack}" ]; then
+		>&2 echo "No stack by the name of \"${stackname}\". Stale .stackname file. Deleting."
+		rm -f .stackname
+		list_stacks
+		exit 0
+	fi
+else
+	>&2 echo "No stackname known or given."
+	list_stacks
+	exit 0
+fi
+
+sid="$(echo "${stack}" | jq -r .StackId)"
+
+while true; do
+	state="$(echo "${stack}" | jq -r .StackStatus)"
+	case "${state}" in
+		CREATE_COMPLETE)
+			ip="$(aws ec2 describe-instances --query "Reservations[*].Instances[*].PublicIpAddress" --filters "Name=tag-key,Values=aws:cloudformation:stack-id" "Name=tag-value,Values=${sid}" "Name=instance-state-name,Values=running" | jq -r .[][])" || die "Could not get IP address for running instance."
+			ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PasswordAuthentication=no -o ForwardAgent=yes "${user}"@"${ip}" 
+			exit "${?}"
+		;;
+		CREATE_IN_PROGRESS)
+			[ "${stage}" == "creating" ] && echo "." || { echo "Stack \"${stackname}\" is still being crated. Please wait."; stage="creating"; }
+			sleep 1
+			stack="$(get_stack "${stackname}")" || die "Could not refresh stack status."
+		;;
+		*)
+			>&2 echo "Error: Stack \"${stackname}\" is in fault status \"${state}\". Cannot connect."
+			exit 1;
+		;;
+	esac
+done
