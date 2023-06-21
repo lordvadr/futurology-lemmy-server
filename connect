@@ -41,6 +41,7 @@ done
 if [ -n "${1:-}" ]; then
 	user="$(echo "${1}" | cut -d@ -f 1)"
 	stackname="$(echo "${1}" | cut -d@ -f 2)"
+	[ "${stackname}" != "${1}" ] || stackname=""
 fi
 
 [ -n "${user:-}" ] || user="${USER}"
