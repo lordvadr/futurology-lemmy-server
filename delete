@@ -61,7 +61,7 @@ while true; do
     DELETE_COMPLETE)
       echo
       echo "Stack has been successfully deleted."
-			[ "${sf}" != "1" ] || rm -f ".stackfile."
+			[ "${sf}" != "1" ] || rm -f ".stackname"
 			exit 0
     ;;
 		*)
