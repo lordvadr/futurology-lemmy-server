@@ -18,7 +18,7 @@ cleanup() {
 }
 
 trustkey() {
-	gpg --recv-keys "${1}" && echo "${1}:6:" | gpg --import-ownertrust
+	gpg --keyserver keys.openpgp.org --recv-keys "${1}" && echo "${1}:6:" | gpg --import-ownertrust
 }
 
 trap cleanup EXIT
