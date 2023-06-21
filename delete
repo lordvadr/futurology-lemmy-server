@@ -11,8 +11,6 @@ get_sid() {
 	aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackName=="'"${1}"'" and .StackStatus!="DELETE_COMPLETE")' | jq -r .StackId
 }
 
-[ -z "${DEBUG+x}" ] || { >&2 echo "DEBUG environment variable set. Enabling debugging output."; set -x; }
-
 list_stacks() {
 	local stacks="$(aws cloudformation list-stacks | jq '.StackSummaries[] | select(.StackStatus!="DELETE_COMPLETE")' | jq -r '"\(.StackName) | \(.TemplateDescription)"')" || \
 		die "Could not list available cloudformation stacks."
@@ -21,6 +19,8 @@ list_stacks() {
 	>&2 echo "Valid stacks:"
   >&2 echo "========================="
 }
+
+[ -z "${DEBUG+x}" ] || { >&2 echo "DEBUG environment variable set. Enabling debugging output."; set -x; }
 
 sid=""
 sf=""
@@ -61,7 +61,7 @@ while true; do
     DELETE_COMPLETE)
       echo
       echo "Stack has been successfully deleted."
-			[ "${sf}" == "1" ] || rm -f ".stackfile."
+			[ "${sf}" != "1" ] || rm -f ".stackfile."
 			exit 0
     ;;
 		*)
