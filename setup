@@ -86,7 +86,7 @@ gpg --keyserver keys.openpgp.org --refresh-keys
 gpg --list-keys --with-colons | awk -F: 'c&&$1=="fpr"{print $10 ":6:"}{if($1=="pub"){c=1}else{c=0}}' | gpg --import-ownertrust
 
 git clone "${config}" config
-commit="$(last_sign_commit "${branch}" config)"
+commit="$(last_signed_commit "${branch}" config)"
 [ -n "${commit}" ] || die "No most recently signed commit in config repo."
 pushd config
 git checkout "${commit}"
