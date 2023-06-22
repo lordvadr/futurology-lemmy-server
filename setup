@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -xeuo pipefail
 
 sshkeys="https://github.com/lordvadr/futurology-ssh-keys.git"
 gpgkeys="https://github.com/lordvadr/futurology-gpg-keys.git"
@@ -19,25 +19,25 @@ cleanup() {
 }
 
 last_signed_commit() {
-	pushd "${1}" || die "Could not cd into \"${1}\"."
+	local dir=0
+	[ -z "${2:-}" ] || [ ! -d "${2}" ] || { dir=1; pushd "${2}" > /dev/null 2>&1 || die "Could not change directory to \"${2}\"."; } 
 
-	git checkout "${branch}" || die "Could not checkout \"${branch}\" branch."
+	[ -z "${1:-}" ] || git checkout "${1}" || die "Could not checkout branch \"${1}\"."
+
 	COMMIT=""
 
 	for c in $(git log --pretty=format:"%H"); do
 		if git verify-commit "${c}"; then
 			COMMIT="${c}"
-			git checkout "${c}"
 			break
 		else
 			COMMIT=""
 		fi
 	done
 
-	[ -n "${COMMIT}" ] || die "No signed commit found."
+	[ "${dir}" != "1" ] || popd > /dev/null 2>&1
 
-	echo "Most recent signed commit for "${1}" is \"${COMMIT}\"."
-	popd
+	[ -n "${COMMIT}" ] && echo "${COMMIT}"
 }
 
 trap cleanup EXIT
@@ -68,12 +68,24 @@ gpg --keyserver keys.openpgp.org --refresh-keys
 mkdir -p "${workdir}" && pushd "${workdir}" || die "Could not create and cd into working directory \"${workdir}\"."
 
 git clone "${gpgkeys}" gpg-keys
+
+oldcommit=""
+commit="$(last_signed_commit "${branch}" gpg-keys)"
+[ -n "${commit}" ] || die "No most recent signed commit in gpg keys repo."
+while [ "${commit}" != "${oldcommit}" ]; do
+	pushd gpg-keys
+	git checkout "${commit}"
+	cat *.pub | gpg --import
+	popd
+	commit="$(last_signed_commit "${branch}" gpg-keys)"
+done
+
 git clone "${config}" config
-
-last_signed_commit gpg-keys
-last_signed_commit config
-
+commit="$(last_sign_commit "${branch}" config)"
+[ -n "${commit}" ] || die "No most recently signed commit in config repo."
 pushd config
+git checkout "${commit}"
+
 [ -e "setup.sh" ] || die "No \"setup.sh\" script to launch."
 
 [ -x "setup.sh" ] || die "\"setup.sh\" is not executabel."
