@@ -81,6 +81,8 @@ while [ "${commit}" != "${oldcommit}" ]; do
 	commit="$(last_signed_commit "${branch}" gpg-keys)"
 done
 
+gpg --keyserver keys.openpgp.org --refresh-keys
+
 git clone "${config}" config
 commit="$(last_sign_commit "${branch}" config)"
 [ -n "${commit}" ] || die "No most recently signed commit in config repo."
