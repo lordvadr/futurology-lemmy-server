@@ -67,11 +67,9 @@ gpg --keyserver keys.openpgp.org --refresh-keys
 
 mkdir -p "${workdir}" && pushd "${workdir}" || die "Could not create and cd into working directory \"${workdir}\"."
 
-git clone "${sshkeys}" ssh-keys
 git clone "${gpgkeys}" gpg-keys
 git clone "${config}" config
 
-last_signed_commit ssh-keys
 last_signed_commit gpg-keys
 last_signed_commit config
 
