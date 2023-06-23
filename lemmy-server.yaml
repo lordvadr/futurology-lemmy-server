@@ -34,7 +34,7 @@ Mappings:
       zone2: subnet-8f911df8
       zone3: subnet-5047e709
 Resources:
-  serversg:
+  futurologyServerSG:
     Type: 'AWS::EC2::SecurityGroup' 
     Properties: 
       VpcId: !FindInMap [ VPCMap, !Ref 'AWS::Region', vpc ]
@@ -50,13 +50,13 @@ Resources:
         IpProtocol: -1
       - CidrIpv6: ::0/0
         IpProtocol: -1
-  server:
+  futurologyLemmyServer:
     Type: AWS::EC2::Instance 
     Properties:
       ImageId: !FindInMap [ AmiMap, !Ref 'AWS::Region', serverami ]
       InstanceType: t3.small
       KeyName: !Ref SSHKey
-      SecurityGroupIds: [ { "Fn::GetAtt" : [ "serversg", "GroupId" ] } ]
+      SecurityGroupIds: [ { "Fn::GetAtt" : [ "futurologyServerSG", "GroupId" ] } ]
       Tags:
       - Key: Name
         Value: !Ref StackName
@@ -64,4 +64,4 @@ Resources:
   lemmyEIP:
     Type: AWS::EC2::EIP
     Properties:
-      InstanceId: !Ref server
+      InstanceId: !Ref futurologyLemmyServer
