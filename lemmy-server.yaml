@@ -50,6 +50,13 @@ Resources:
         IpProtocol: -1
       - CidrIpv6: ::0/0
         IpProtocol: -1
+  futurologyInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: futurologyInstanceProfile
+      Path: /
+      Roles:
+       - futurology-serverrole-us-east-1
   futurologyLemmyServer:
     Type: AWS::EC2::Instance 
     Properties:
@@ -57,6 +64,7 @@ Resources:
       InstanceType: t3.small
       KeyName: !Ref SSHKey
       SecurityGroupIds: [ { "Fn::GetAtt" : [ "futurologyServerSG", "GroupId" ] } ]
+      IamInstanceProfile: !Ref futurologyInstanceProfile
       Tags:
       - Key: Name
         Value: !Ref StackName

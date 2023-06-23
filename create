@@ -46,7 +46,7 @@ echo "Stack name: \"${stackname}\""
 
 [ -z "${DEBUG+x}" ] || { >&2 echo "\"DEBUG\" environment variable is set. Enabling debugging output."; set -x; }
 
-sid="$(aws cloudformation create-stack --stack-name "${stackname}" --template-body file://lemmy-server.yaml --parameters ParameterKey=SSHKey,ParameterValue=white-yubikey ParameterKey=StackName,ParameterValue="${stackname}" | jq -r .StackId)" || die "Stack could not be created."
+sid="$(aws cloudformation create-stack --stack-name "${stackname}" --template-body file://lemmy-server.yaml --parameters ParameterKey=SSHKey,ParameterValue=white-yubikey ParameterKey=StackName,ParameterValue="${stackname}" --capabilities CAPABILITY_NAMED_IAM | jq -r .StackId)" || die "Stack could not be created."
 
 echo "Stack ID is \"${sid}\""
 echo "Saving stackname to .stackname file."
