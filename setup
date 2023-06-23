@@ -97,4 +97,6 @@ git checkout "${commit}"
 
 bash -n "setup.sh" || die "\"setup.sh\" does not pass linting by bash."
 
+export DEBUG=1
+
 exec ./setup.sh
