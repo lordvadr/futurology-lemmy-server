@@ -73,10 +73,6 @@ Resources:
     Type: AWS::EC2::EIP
     Properties:
       InstanceId: !Ref futurologyLemmyServer
-#  futurologyZone:
-#    Type: AWS::Route53::HostedZone
-#    Properties:
-#      Name: futurology.social
   futurologyDNS:
     Type: AWS::Route53::RecordSet
     Properties:
