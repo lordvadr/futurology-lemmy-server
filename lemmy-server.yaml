@@ -65,6 +65,7 @@ Resources:
       KeyName: !Ref SSHKey
       SecurityGroupIds: [ { "Fn::GetAtt" : [ "futurologyServerSG", "GroupId" ] } ]
       IamInstanceProfile: !Ref futurologyInstanceProfile
+      Ipv6AddressCount: 1
       Tags:
       - Key: Name
         Value: !Ref StackName
@@ -73,7 +74,7 @@ Resources:
     Type: AWS::EC2::EIP
     Properties:
       InstanceId: !Ref futurologyLemmyServer
-  futurologyDNS:
+  futurologyDNSv4:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: Z08349791A4YNLCKI1TBH
@@ -82,3 +83,86 @@ Resources:
       TTL: 1
       ResourceRecords:
       - !Ref lemmyEIP
+  futurologyDNSv6:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z08349791A4YNLCKI1TBH
+      Name: futurology.social.
+      Type: AAAA
+      TTL: 1
+      ResourceRecords:
+      - Fn::GetAtt: CustomIpv6Resource.Ipv6Address
+  LambdaBasicExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: CustomLambdaEC2DescribePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                Resource: '*'
+  CustomIpv6Resource:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt 'CustomFunction.Arn'
+      ResourceRef: !Ref futurologyLemmyServer
+  CustomFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Description: "Retrieves IPv6 address of EC2 instance"
+      Timeout: 30
+      Role: !GetAtt 'LambdaBasicExecutionRole.Arn'
+      Runtime: python3.7
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          import cfnresponse
+          import boto3
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+            logger.info('got event {}'.format(event))
+            try:
+              responseData = {}
+              if event['RequestType'] == 'Delete':
+                logger.info('Incoming RequestType: Delete operation')
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              if event['RequestType'] in ["Create", "Update"]:
+                # 1. retrieve resource reference ID or Name
+                ResourceRef=event['ResourceProperties']['ResourceRef']
+                # 2. retrieve boto3 client
+                client = boto3.client('ec2')
+                # 3. Invoke describe/retrieve function using ResourceRef
+                response = response=client.describe_network_interfaces(Filters=[{'Name':'attachment.instance-id', 'Values':[ResourceRef] }])
+                # 4. Parse and return required attributes
+                responseData = {}
+                responseData['Ipv6Address'] = response.get('NetworkInterfaces')[0]['Ipv6Addresses'][0]['Ipv6Address']
+                logger.info('Retrieved IPv6 address!')
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              else:
+                logger.info('Unexpected RequestType!')
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            except Exception as err:
+              logger.error(err)
+              responseData = {"Data": str(err)}
+              cfnresponse.send(event,context,cfnresponse.FAILED,responseData)
