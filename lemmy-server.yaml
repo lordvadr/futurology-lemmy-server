@@ -73,16 +73,16 @@ Resources:
     Type: AWS::EC2::EIP
     Properties:
       InstanceId: !Ref futurologyLemmyServer
-  futurologyZone:
-    Type: AWS::Route53::HostedZone
-    Properties:
-      Name: futurology.social
+#  futurologyZone:
+#    Type: AWS::Route53::HostedZone
+#    Properties:
+#      Name: futurology.social
   futurologyDNS:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneId: !Ref futurologyZone
+      HostedZoneId: Z08349791A4YNLCKI1TBH
       Name: futurology.social.
       Type: A
-      TTL: 500
+      TTL: 1
       ResourceRecords:
       - !Ref lemmyEIP
